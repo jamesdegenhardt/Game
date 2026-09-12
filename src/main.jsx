@@ -48,6 +48,17 @@ const crisisScenarios = [
   { type: 'set', title: 'VFX crew poached', description: 'A rival studio has hired away your specialized effects team overnight. Your final sequence is suddenly unfinished.', severity: 'CORPORATE SABOTAGE', money: 940000, quality: -19, time: 2 },
   { type: 'set', title: 'The script is in the papers', description: 'A leaked draft is dominating the entertainment press. The opening-weekend narrative is turning against you.', severity: 'PRESS BREACH', money: 520000, quality: -8, hype: -26, time: 1 },
 ];
+const upgradeNodes = [
+  { id: 'backlot', branch: 'Backlot Expansion', name: 'Premium Soundstage', icon: '▣', cost: 3000000, reputation: 1, prereq: [], benefit: 'Own a permanent soundstage. Future films pay no location rental fees, gain +8 visual presentation, and add $35,000 daily lot upkeep.' },
+  { id: 'greenScreen', branch: 'Backlot Expansion', name: 'State-of-the-art Green Screens', icon: '◈', cost: 2200000, reputation: 2, prereq: ['backlot'], benefit: 'Add +8 visual presentation to every film shot on your owned backlot.' },
+  { id: 'practical', branch: 'Backlot Expansion', name: 'Practical Effects Facility', icon: '✦', cost: 3500000, reputation: 4, prereq: ['greenScreen'], benefit: 'Add +5 visual presentation and reduce set crisis probability by 15%.' },
+  { id: 'castingAgency', branch: 'Department Heads', name: 'In-house Casting Agency', icon: '♙', cost: 2500000, reputation: 2, prereq: [], benefit: 'Reduce actor salaries by 25%, reduce diva crisis frequency, and pay a $35,000 weekly executive retainer.' },
+  { id: 'marketingFirm', branch: 'Department Heads', name: 'In-house Marketing Firm', icon: '✺', cost: 2800000, reputation: 2, prereq: [], benefit: 'Add +20 hype to every release and pay a $45,000 weekly executive retainer.' },
+  { id: 'vfxLab', branch: 'Department Heads', name: 'VFX Laboratory', icon: '⬡', cost: 4000000, reputation: 4, prereq: [], benefit: 'Science-fiction and action films gain +8 baseline quality and pay a $60,000 weekly executive retainer.' },
+  { id: 'streaming', branch: 'Studio Vault & Syndication', name: 'Streaming Platform Partnership', icon: '▤', cost: 3000000, reputation: 3, prereq: [], benefit: 'Double weekly residual payments from every completed catalog film.' },
+  { id: 'cultClassic', branch: 'Studio Vault & Syndication', name: 'Cult Classic Algorithm', icon: '◎', cost: 2100000, reputation: 4, prereq: ['streaming'], benefit: 'Each release has a chance to resurrect a poorly reviewed catalog film for a major cash bonus.' },
+  { id: 'merchandising', branch: 'Studio Vault & Syndication', name: 'Merchandising Licensing', icon: '◇', cost: 2600000, reputation: 5, prereq: ['streaming'], benefit: 'Action and Comedy releases receive a flat $400,000 licensing bonus.' },
+];
 
 const money = (value) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(value);
 const percent = (value) => `${Math.round(value)}%`;
@@ -138,19 +149,24 @@ function App() {
   const [visibleWeeks, setVisibleWeeks] = useState(0);
   const [dashboardTab, setDashboardTab] = useState('overview');
   const [gameOver, setGameOver] = useState(false);
+  const [upgrades, setUpgrades] = useState([]);
+  const [upgradeCelebration, setUpgradeCelebration] = useState(null);
   const [crisis, setCrisis] = useState(null);
   const [productionImpact, setProductionImpact] = useState({ quality: 0, hype: 0, time: 0 });
 
+  const hasUpgrade = (id) => upgrades.includes(id);
+  const upgradeEffects = { backlot: hasUpgrade('backlot'), greenScreen: hasUpgrade('greenScreen'), practical: hasUpgrade('practical'), castingAgency: hasUpgrade('castingAgency'), marketingFirm: hasUpgrade('marketingFirm'), vfxLab: hasUpgrade('vfxLab'), streaming: hasUpgrade('streaming'), cultClassic: hasUpgrade('cultClassic'), merchandising: hasUpgrade('merchandising') };
+  const hiredActor = upgradeEffects.castingAgency ? { ...actor, salary: Math.round(actor.salary * 0.75) } : actor;
   const crewSize = 120;
   const shootDays = 10;
-  const dailyOverhead = 55000 + location.daily + equipment.daily;
+  const dailyOverhead = 55000 + (upgradeEffects.backlot ? 35000 : location.daily) + equipment.daily + (upgradeEffects.castingAgency ? 35000 : 0) + (upgradeEffects.marketingFirm ? 45000 : 0) + (upgradeEffects.vfxLab ? 60000 : 0);
   const assetCost = Math.round(costumeQuality * 12000) + propsBudget + vfxBudget;
-  const immersionScore = Math.min(100, Math.round(costumeQuality * 0.3 + Math.min(propsBudget / 18000, 100) * 0.35 + Math.min(vfxBudget / 22000, 100) * 0.35));
+  const immersionScore = Math.min(100, Math.round(costumeQuality * 0.3 + Math.min(propsBudget / 18000, 100) * 0.35 + Math.min(vfxBudget / 22000, 100) * 0.35 + (upgradeEffects.backlot ? 8 : 0) + (upgradeEffects.greenScreen ? 8 : 0) + (upgradeEffects.practical ? 5 : 0)));
   const morale = catering.morale;
-  const planning = { location, catering, equipment, securityBudget, visualScore: immersionScore, morale, delayChance: location.delay + catering.strike + (script?.quality > 80 && location.quality < 60 ? 0.18 : 0), crisisChance: Math.min(0.8, location.delay + catering.strike + (securityBudget < 200000 ? 0.12 : 0) + (actor.star > 85 ? 0.08 : 0)), overheadDaily: dailyOverhead, overheadTotal: dailyOverhead * shootDays, total: location.fee + location.daily * shootDays + catering.daily * crewSize * shootDays + equipment.daily * shootDays + assetCost + securityBudget };
-  const projected = (script?.cost || 0) + actor.salary + director.salary + marketing + planning.total + planning.overheadTotal;
-  const quality = script ? Math.round(script.quality * 0.45 + director.talent * 0.25 + actor.talent * 0.3) : 0;
-  const hype = script ? Math.round(marketing / 10000 + actor.star * 0.8) : 0;
+  const planning = { location, catering, equipment, securityBudget, visualScore: immersionScore, morale, delayChance: location.delay + catering.strike - (upgradeEffects.practical ? 0.15 : 0) + (script?.quality > 80 && location.quality < 60 ? 0.18 : 0), crisisChance: Math.min(0.8, location.delay + catering.strike - (upgradeEffects.practical ? 0.15 : 0) + (securityBudget < 200000 ? 0.12 : 0) + (hiredActor.star > 85 ? 0.08 : 0) - (upgradeEffects.castingAgency ? 0.1 : 0)), overheadDaily: dailyOverhead, overheadTotal: dailyOverhead * shootDays, total: (upgradeEffects.backlot ? 0 : location.fee + location.daily * shootDays) + catering.daily * crewSize * shootDays + equipment.daily * shootDays + assetCost + securityBudget };
+  const projected = (script?.cost || 0) + hiredActor.salary + director.salary + marketing + planning.total + planning.overheadTotal;
+  const quality = script ? Math.round(script.quality * 0.45 + director.talent * 0.25 + hiredActor.talent * 0.3 + (upgradeEffects.vfxLab && ['Sci-Fi', 'Action'].includes(script.genre) ? 8 : 0)) : 0;
+  const hype = script ? Math.round(marketing / 10000 + hiredActor.star * 0.8 + (upgradeEffects.marketingFirm ? 20 : 0)) : 0;
 
   const purchaseScript = (choice) => {
     if (choice.cost > budget) return;
@@ -159,8 +175,16 @@ function App() {
     setPhase('logistics');
   };
 
+  const buyUpgrade = (node) => {
+    if (upgrades.includes(node.id) || budget < node.cost || reputation < node.reputation || node.prereq.some((id) => !upgrades.includes(id))) return;
+    setBudget((current) => current - node.cost);
+    setUpgrades((current) => [...current, node.id]);
+    setUpgradeCelebration(node.id);
+    setTimeout(() => setUpgradeCelebration(null), 1400);
+  };
+
   const startFilming = () => {
-    const castingCost = actor.salary + director.salary + marketing + planning.total + planning.overheadTotal;
+    const castingCost = hiredActor.salary + director.salary + marketing + planning.total + planning.overheadTotal;
     const remainingAfterProduction = budget - castingCost;
     const loanAmount = Math.max(0, planning.overheadDaily - remainingAfterProduction);
     const newLoan = loanAmount > 0 ? { principal: Math.ceil(loanAmount / 100000) * 100000, interest: Math.ceil(loanAmount / 100000) * 25000, deadline: year + 0.5 } : null;
@@ -174,13 +198,13 @@ function App() {
   useEffect(() => {
     if (phase !== 'filming') return undefined;
     const timer = setInterval(() => setShootProgress((current) => {
-      if (current >= 100) { clearInterval(timer); setResult(createRelease({ script, actor, director, marketing, quality, hype, trend, planning, loan, impact: productionImpact })); setVisibleWeeks(0); setPhase('receipt'); return 100; }
+      if (current >= 100) { clearInterval(timer); setResult(createRelease({ script, actor: hiredActor, director, marketing, quality, hype, trend, planning, loan, impact: productionImpact })); setVisibleWeeks(0); setPhase('receipt'); return 100; }
       if (!crisis && Math.random() < planning.crisisChance * 0.07) { setCrisis(createCrisis({ script, actor, director, planning, budget })); setPhase('crisis'); return current; }
       if (Math.random() < planning.delayChance * 0.18) return current;
       return current + 4;
     }), 100);
     return () => clearInterval(timer);
-  }, [phase, quality, hype, script, actor, director, marketing, trend, planning, loan, crisis, productionImpact, budget]);
+  }, [phase, quality, hype, script, hiredActor, director, marketing, trend, planning, loan, crisis, productionImpact, budget]);
 
   useEffect(() => {
     if (phase !== 'results' || !result || visibleWeeks >= result.weeks.length) return undefined;
@@ -218,10 +242,13 @@ function App() {
   };
   const wrapRelease = () => {
     const gross = result.weeks.reduce((sum, week) => sum + week.domestic + week.international, 0);
-    const net = gross - result.totalCost;
-    const residual = Math.round(result.audienceScore * 1550);
-    setCatalog((current) => [...current, { ...result, gross, net, residual, year }]);
-    setBudget((current) => current + gross - (result.loan?.principal || 0) - (result.loan?.interest || 0));
+    const licensingBonus = upgradeEffects.merchandising && ['Action', 'Comedy'].includes(result.genre) ? 400000 : 0;
+    const cultBonus = upgradeEffects.cultClassic && result.criticScore < 60 && Math.random() < 0.35 ? 1200000 : 0;
+    const finalGross = gross + licensingBonus + cultBonus;
+    const net = finalGross - result.totalCost;
+    const residual = Math.round(result.audienceScore * 1550 * (upgradeEffects.streaming ? 2 : 1));
+    setCatalog((current) => [...current, { ...result, gross: finalGross, net, residual, year, licensingBonus, cultBonus }]);
+    setBudget((current) => current + finalGross - (result.loan?.principal || 0) - (result.loan?.interest || 0));
     setReputation((current) => current + (result.criticScore > 85 ? 2 : result.criticScore > 70 ? 1 : 0));
     setYear((current) => current + 0.5);
     setScripts(randomScripts());
@@ -230,10 +257,10 @@ function App() {
     setDashboardTab('overview');
     setLoan(null);
     setPhase('dashboard');
-    if (budget + gross - (result.loan?.principal || 0) - (result.loan?.interest || 0) < 0) setGameOver(true);
+    if (budget + finalGross - (result.loan?.principal || 0) - (result.loan?.interest || 0) < 0) setGameOver(true);
   };
 
-  if (gameOver) return <GameOver onRestart={() => { setBudget(10000000); setYear(2024); setReputation(0); setCatalog([]); setGameOver(false); setPhase('dashboard'); }} />;
+  if (gameOver) return <GameOver onRestart={() => { setBudget(10000000); setYear(2024); setReputation(0); setCatalog([]); setUpgrades([]); setGameOver(false); setPhase('dashboard'); }} />;
   const currentWeeks = result?.weeks.slice(0, visibleWeeks) || [];
   const domestic = currentWeeks.reduce((sum, week) => sum + week.domestic, 0);
   const international = currentWeeks.reduce((sum, week) => sum + week.international, 0);
@@ -245,14 +272,16 @@ function App() {
       <div className="nav-label">Workspace</div>
       <nav>
         <button className={phase === 'dashboard' && dashboardTab === 'overview' ? 'nav-item active' : 'nav-item'} onClick={() => { setDashboardTab('overview'); setPhase('dashboard'); }}><LayoutDashboard size={18} /> Overview</button>
+        <button className={phase === 'hq' ? 'nav-item active' : 'nav-item'} onClick={() => setPhase('hq')}><BriefcaseBusiness size={18} /> Studio HQ</button>
         <button className={phase === 'preproduction' || phase === 'logistics' || phase === 'casting' ? 'nav-item active' : 'nav-item'} onClick={() => setPhase('preproduction')}><Clapperboard size={18} /> Production</button>
         <button className={phase === 'results' ? 'nav-item active' : 'nav-item'} onClick={() => result && setPhase('results')}><BarChart3 size={18} /> Box Office</button>
       </nav>
       <div className="sidebar-bottom"><div className="nav-label">Studio</div><button className="nav-item" onClick={() => { setDashboardTab('catalog'); setPhase('dashboard'); }}><BriefcaseBusiness size={18} /> Catalog Profits</button><button className="nav-item"><Settings size={18} /> Settings</button><div className="user-card"><div className="avatar">JD</div><div><strong>Jordan Davis</strong><small>Studio Owner</small></div><Menu size={16} className="user-menu" /></div></div>
     </aside>
     <main className="main-content">
-      <header className="topbar"><div className="mobile-logo"><Film size={18} /></div><div className="breadcrumb"><span>Studio</span><span>/</span><strong>{phase === 'dashboard' ? (dashboardTab === 'catalog' ? 'Catalog Profits' : 'Overview') : phase === 'preproduction' ? 'Pre-Production' : phase === 'logistics' ? 'Logistics & Assets' : phase === 'casting' ? 'Casting Department' : phase === 'filming' ? 'Principal Photography' : phase === 'receipt' ? 'Production Receipt' : 'Box Office Results'}</strong></div><div className="header-metrics"><Metric icon={<Wallet size={16} />} label="Studio budget" value={<AnimatedNumber value={budget} />} /><Metric icon={<Star size={16} />} label="Reputation" value={reputation.toFixed(1)} suffix=" stars" /><Metric icon={<CalendarDays size={16} />} label="Current year" value={year.toFixed(1)} /></div><button className="icon-button"><Activity size={18} /></button></header>
+      <header className="topbar"><div className="mobile-logo"><Film size={18} /></div><div className="breadcrumb"><span>Studio</span><span>/</span><strong>{phase === 'hq' ? 'Studio Headquarters' : phase === 'dashboard' ? (dashboardTab === 'catalog' ? 'Catalog Profits' : 'Overview') : phase === 'preproduction' ? 'Pre-Production' : phase === 'logistics' ? 'Logistics & Assets' : phase === 'casting' ? 'Casting Department' : phase === 'filming' ? 'Principal Photography' : phase === 'receipt' ? 'Production Receipt' : 'Box Office Results'}</strong></div><div className="header-metrics"><Metric icon={<Wallet size={16} />} label="Studio budget" value={<AnimatedNumber value={budget} />} /><Metric icon={<Star size={16} />} label="Reputation" value={reputation.toFixed(1)} suffix=" stars" /><Metric icon={<CalendarDays size={16} />} label="Current year" value={year.toFixed(1)} /></div><button className="icon-button"><Activity size={18} /></button></header>
       {phase === 'dashboard' && <Dashboard onNewProject={newProject} catalog={catalog} dashboardTab={dashboardTab} setDashboardTab={setDashboardTab} year={year} />}
+      {phase === 'hq' && <Headquarters budget={budget} reputation={reputation} upgrades={upgrades} onBuy={buyUpgrade} celebration={upgradeCelebration} onBack={() => setPhase('dashboard')} />}
       {phase === 'preproduction' && <PreProduction scripts={scripts} budget={budget} trend={trend} onPurchase={purchaseScript} onBack={() => setPhase('dashboard')} />}
       {phase === 'logistics' && <><LogisticsPlanner script={script} budget={budget} location={location} setLocation={setLocation} catering={catering} setCatering={setCatering} equipment={equipment} setEquipment={setEquipment} costumeQuality={costumeQuality} setCostumeQuality={setCostumeQuality} propsBudget={propsBudget} setPropsBudget={setPropsBudget} vfxBudget={vfxBudget} setVfxBudget={setVfxBudget} planning={planning} onContinue={() => setPhase('casting')} onBack={() => setPhase('preproduction')} /><SecurityDock securityBudget={securityBudget} setSecurityBudget={setSecurityBudget} /></>}
       {phase === 'casting' && <Casting script={script} actor={actor} setActor={setActor} director={director} setDirector={setDirector} marketing={marketing} setMarketing={setMarketing} budget={budget} projected={projected} allowLoan={projected > budget} onStart={startFilming} onBack={() => setPhase('logistics')} />}
@@ -266,6 +295,8 @@ function App() {
 
 function Metric({ icon, label, value, suffix = '' }) { return <div className="metric"><span className="metric-icon">{icon}</span><span><small>{label}</small><strong>{value}{suffix}</strong></span></div>; }
 function PageTitle({ eyebrow, title, detail, children }) { return <div className="page-title"><div><div className="eyebrow">{eyebrow}</div><h1>{title}</h1><p>{detail}</p></div>{children}</div>; }
+function Headquarters({ budget, reputation, upgrades, onBuy, celebration, onBack }) { const ownedBacklot = upgrades.includes('backlot'); const branches = [...new Set(upgradeNodes.map((node) => node.branch))]; return <div className="view fade-in"><PageTitle eyebrow="Permanent studio development" title="Studio Headquarters" detail="Invest in the infrastructure that compounds every future production."><button className="text-button" onClick={onBack}><ArrowRight size={16} className="flip" /> Return to overview</button></PageTitle><div className="hq-banner"><div><div className="eyebrow">The studio footprint</div><h2>{ownedBacklot ? 'Your empire is taking shape.' : 'Build something that outlasts a release.'}</h2><p>Unlock permanent advantages with profits from the box office. Every executive and facility carries an ongoing retainer.</p></div><div className="hq-stats"><span><small>Available capital</small><strong>{money(budget)}</strong></span><span><small>Reputation gate</small><strong>{reputation.toFixed(1)} <em>stars</em></strong></span></div></div><div className="hq-footprint">{ownedBacklot && <><div className="building owned"><span>▦</span><strong>SS SOUNDSTAGE</strong><small>Owned backlot · $35k/day upkeep</small></div>{upgrades.includes('greenScreen') && <div className="building"><span>◈</span><strong>GREEN SCREEN LAB</strong><small>Visual presentation +8</small></div>}{upgrades.includes('practical') && <div className="building"><span>✦</span><strong>PRACTICAL FX</strong><small>Visual presentation +5</small></div>}</>}</div><div className="hq-tree">{branches.map((branch) => <section className="upgrade-branch" key={branch}><div className="branch-heading"><span>{branch === 'Backlot Expansion' ? '01' : branch === 'Department Heads' ? '02' : '03'}</span><div><h2>{branch}</h2><p>{branch === 'Backlot Expansion' ? 'Own the stages. Control the spectacle.' : branch === 'Department Heads' ? 'Elite operators for every wing.' : 'Make yesterday’s films earn tomorrow.'}</p></div></div><div className="upgrade-grid">{upgradeNodes.filter((node) => node.branch === branch).map((node) => <UpgradeNode key={node.id} node={node} owned={upgrades.includes(node.id)} budget={budget} reputation={reputation} upgrades={upgrades} onBuy={onBuy} />)}</div></section>)}</div>{celebration && <div className="upgrade-celebration"><div className="celebration-particles">✦　✧　✦　✧　✦</div><strong>Upgrade acquired</strong><span>Permanent advantage installed</span></div>}</div>; }
+function UpgradeNode({ node, owned, budget, reputation, upgrades, onBuy }) { const missingPrereq = node.prereq.find((id) => !upgrades.includes(id)); const locked = !owned && (budget < node.cost || reputation < node.reputation || missingPrereq); const lockReason = missingPrereq ? `Requires ${upgradeNodes.find((item) => item.id === missingPrereq)?.name}` : reputation < node.reputation ? `Requires ${node.reputation} reputation stars` : budget < node.cost ? 'Insufficient capital' : 'Ready to acquire'; return <article className={`upgrade-node ${owned ? 'owned' : ''} ${locked ? 'locked' : ''}`} title={`${node.name}: ${node.benefit}`}><div className="node-top"><span className="node-icon">{node.icon}</span><span className="node-status">{owned ? 'INSTALLED' : node.branch === 'Backlot Expansion' ? 'FACILITY' : 'PERK'}</span></div><h3>{node.name}</h3><p>{node.benefit}</p><div className="node-meta"><span>{money(node.cost)}</span><span>{node.reputation}★ gate</span></div><button disabled={locked || owned} onClick={() => onBuy(node)}>{owned ? 'Owned permanently' : lockReason}</button></article>; }
 function Dashboard({ onNewProject, catalog, dashboardTab, setDashboardTab, year }) { const totalResidual = catalog.reduce((sum, item) => sum + item.residual, 0); return <div className="view fade-in"><div className="dashboard-tabs"><button className={dashboardTab === 'overview' ? 'tab active' : 'tab'} onClick={() => setDashboardTab('overview')}><LayoutDashboard size={15} /> Overview</button><button className={dashboardTab === 'catalog' ? 'tab active' : 'tab'} onClick={() => setDashboardTab('catalog')}><TrendingUp size={15} /> Catalog Profits <span>{catalog.length}</span></button></div>{dashboardTab === 'overview' ? <><PageTitle eyebrow={`Season ${year.toFixed(1)} / Tuesday, October 15`} title="Good morning, Jordan" detail="Your studio is ready for its next big story." /><section className="hero-panel"><div className="hero-copy"><span className="section-tag"><Sparkles size={14} /> Studio command center</span><h2>Make something<br /><em>worth watching.</em></h2><p>Every great studio starts with one courageous greenlight. Find your next story and turn it into a cultural moment.</p><button className="primary-button pulse" onClick={onNewProject}><Film size={18} /> New Project <ArrowRight size={17} /></button></div><div className="hero-visual"><div className="orbital orbital-one"></div><div className="orbital orbital-two"></div><div className="hero-reel"><Clapperboard size={44} /><span>SS</span></div><div className="visual-caption"><span className="live-dot"></span> Studio status <strong>Ready to produce</strong></div></div></section><div className="section-heading"><div><h3>Studio pulse</h3><p>Your key performance indicators at a glance.</p></div><span className="period"><CalendarDays size={14} /> {catalog.length} releases</span></div><div className="stat-grid"><StatCard icon={<Ticket />} label="Audience sentiment" value={catalog.length ? `${Math.round(catalog.reduce((sum, item) => sum + item.audienceScore, 0) / catalog.length)}%` : '—'} note={catalog.length ? 'Across your catalog' : 'No releases yet'} /><StatCard icon={<Gauge />} label="Catalog value" value={money(totalResidual)} note="Weekly residual estimate" /><StatCard icon={<Users />} label="Active projects" value="0" note="Your slate is clear" /></div></> : <CatalogProfits catalog={catalog} />}</div>; }
 function StatCard({ icon, label, value, note }) { return <div className="stat-card"><div className="stat-icon">{icon}</div><small>{label}</small><strong>{value}</strong><span>{note}</span></div>; }
 function PreProduction({ scripts, budget, trend, onPurchase, onBack }) { return <div className="view fade-in"><PageTitle eyebrow="Phase 01 / Pre-production" title="Choose your next story" detail="Acquire a script to begin building your next box office contender."><button className="text-button" onClick={onBack}><X size={16} /> Exit project</button></PageTitle><div className="intel-bar"><span><Activity size={17} /> Market intelligence</span><p>Genre momentum is shifting this quarter. Some stories travel further than others.</p><strong><span className="trend-dot"></span>{trend} is trending</strong></div><div className="section-heading script-heading"><div><h3>Available scripts</h3><p>Each opportunity has its own risk and upside.</p></div><span className="budget-chip"><Wallet size={15} /> {money(budget)} available</span></div><div className="script-grid">{scripts.map((item, index) => <button className="script-card" key={item.title} onClick={() => onPurchase(item)}><div className={`poster poster-${index}`}><span>{item.genre}</span><Film size={30} /></div><div className="script-info"><div className="script-top"><span>SCREENPLAY 0{index + 1}</span><span className="quality"><Star size={13} fill="currentColor" /> {item.quality}</span></div><h3>{item.title}</h3><p>{item.logline}</p><div className="script-footer"><span>Acquire rights</span><strong>{money(item.cost)}</strong></div></div></button>)}</div></div>; }
