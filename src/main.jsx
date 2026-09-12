@@ -59,6 +59,11 @@ const upgradeNodes = [
   { id: 'cultClassic', branch: 'Studio Vault & Syndication', name: 'Cult Classic Algorithm', icon: '◎', cost: 2100000, reputation: 4, prereq: ['streaming'], benefit: 'Each release has a chance to resurrect a poorly reviewed catalog film for a major cash bonus.' },
   { id: 'merchandising', branch: 'Studio Vault & Syndication', name: 'Merchandising Licensing', icon: '◇', cost: 2600000, reputation: 5, prereq: ['streaming'], benefit: 'Action and Comedy releases receive a flat $400,000 licensing bonus.' },
 ];
+const rivalStudios = [
+  { id: 'atlas', name: 'Atlas Pictures', color: '#d58c67', base: 86, shares: 1000000, dividend: 0.018, vault: 'Orbitfall', territory: 'West Campus' },
+  { id: 'monument', name: 'Monument Works', color: '#7db4c4', base: 124, shares: 1000000, dividend: 0.024, vault: 'The Glass Sea', territory: 'North Lot' },
+  { id: 'lighthouse', name: 'Lighthouse Media', color: '#b3a26b', base: 63, shares: 1000000, dividend: 0.012, vault: 'Small Miracles', territory: 'East Annex' },
+];
 
 const money = (value) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(value);
 const percent = (value) => `${Math.round(value)}%`;
@@ -71,12 +76,12 @@ const headlineQuotes = [
   'Somehow, the marketing budget became the main character.',
 ];
 
-function createRelease({ script, actor, director, marketing, quality, hype, trend, planning, loan, impact }) {
+function createRelease({ script, actor, director, marketing, quality, hype, trend, planning, loan, impact, backendCut }) {
   const finalQuality = Math.max(15, Math.min(99, Math.round(quality + (planning.visualScore - 70) * 0.25 + (planning.morale - 70) * 0.1 + planning.location.criticBoost + planning.equipment.reviewBonus + planning.catering.talentBoost + impact.quality - (script.quality > 80 && planning.location.quality < 60 ? 18 : 0))));
   const marketDemand = Number((0.8 + Math.random() * 0.7).toFixed(2));
   const trendBonus = script.genre === trend ? 1.25 : 1;
   const finalHype = Math.max(0, hype + (impact.hype || 0));
-  const openingGross = Math.round((finalQuality + finalHype) * 58000 * marketDemand * trendBonus * planning.location.internationalBoost);
+  const openingGross = Math.round((finalQuality + finalHype) * 58000 * marketDemand * trendBonus * planning.location.internationalBoost * (1 - backendCut));
   const lifespan = finalQuality > 80 ? 8 : finalQuality > 70 ? 6 : finalQuality > 58 ? 4 : 3;
   const weeks = Array.from({ length: lifespan }, (_, index) => {
     const decay = index === 0 ? 1 : Math.pow(0.65, index);
@@ -153,10 +158,31 @@ function App() {
   const [upgradeCelebration, setUpgradeCelebration] = useState(null);
   const [crisis, setCrisis] = useState(null);
   const [productionImpact, setProductionImpact] = useState({ quality: 0, hype: 0, time: 0 });
+  const [lastAwardsYear, setLastAwardsYear] = useState(2024);
+  const [awardCeremony, setAwardCeremony] = useState(null);
+  const [awardsScandal, setAwardsScandal] = useState(false);
+  const [talentPrestige, setTalentPrestige] = useState({ actors: {}, directors: {} });
+  const [festivalLocked, setFestivalLocked] = useState(false);
+  const [festivalBackendCut, setFestivalBackendCut] = useState(0);
+  const [stockHoldings, setStockHoldings] = useState({});
+  const [rivalControl, setRivalControl] = useState({});
+  const [corporateWar, setCorporateWar] = useState(null);
+  const [poisonPillUsed, setPoisonPillUsed] = useState(false);
+  const [controlLost, setControlLost] = useState(false);
+  const [streamingName, setStreamingName] = useState('Silver Screen+');
+  const [streamingPrice, setStreamingPrice] = useState(12);
+  const [serverBudget, setServerBudget] = useState(280000);
+  const [streamingFeatures, setStreamingFeatures] = useState([]);
+  const [exclusiveCatalog, setExclusiveCatalog] = useState(true);
+  const [subscribers, setSubscribers] = useState(0);
+  const [streamingChurn, setStreamingChurn] = useState(4.2);
+  const [streamingQuarter, setStreamingQuarter] = useState(0);
 
   const hasUpgrade = (id) => upgrades.includes(id);
   const upgradeEffects = { backlot: hasUpgrade('backlot'), greenScreen: hasUpgrade('greenScreen'), practical: hasUpgrade('practical'), castingAgency: hasUpgrade('castingAgency'), marketingFirm: hasUpgrade('marketingFirm'), vfxLab: hasUpgrade('vfxLab'), streaming: hasUpgrade('streaming'), cultClassic: hasUpgrade('cultClassic'), merchandising: hasUpgrade('merchandising') };
-  const hiredActor = upgradeEffects.castingAgency ? { ...actor, salary: Math.round(actor.salary * 0.75) } : actor;
+  const actorPrestige = talentPrestige.actors[actor.name] || 0;
+  const directorPrestige = talentPrestige.directors[director.name] || 0;
+  const hiredActor = { ...actor, salary: Math.round(actor.salary * (upgradeEffects.castingAgency ? 0.75 : 1) * (1 + actorPrestige * 0.4)), star: actor.star + actorPrestige * 5 };
   const crewSize = 120;
   const shootDays = 10;
   const dailyOverhead = 55000 + (upgradeEffects.backlot ? 35000 : location.daily) + equipment.daily + (upgradeEffects.castingAgency ? 35000 : 0) + (upgradeEffects.marketingFirm ? 45000 : 0) + (upgradeEffects.vfxLab ? 60000 : 0);
@@ -165,8 +191,17 @@ function App() {
   const morale = catering.morale;
   const planning = { location, catering, equipment, securityBudget, visualScore: immersionScore, morale, delayChance: location.delay + catering.strike - (upgradeEffects.practical ? 0.15 : 0) + (script?.quality > 80 && location.quality < 60 ? 0.18 : 0), crisisChance: Math.min(0.8, location.delay + catering.strike - (upgradeEffects.practical ? 0.15 : 0) + (securityBudget < 200000 ? 0.12 : 0) + (hiredActor.star > 85 ? 0.08 : 0) - (upgradeEffects.castingAgency ? 0.1 : 0)), overheadDaily: dailyOverhead, overheadTotal: dailyOverhead * shootDays, total: (upgradeEffects.backlot ? 0 : location.fee + location.daily * shootDays) + catering.daily * crewSize * shootDays + equipment.daily * shootDays + assetCost + securityBudget };
   const projected = (script?.cost || 0) + hiredActor.salary + director.salary + marketing + planning.total + planning.overheadTotal;
-  const quality = script ? Math.round(script.quality * 0.45 + director.talent * 0.25 + hiredActor.talent * 0.3 + (upgradeEffects.vfxLab && ['Sci-Fi', 'Action'].includes(script.genre) ? 8 : 0)) : 0;
-  const hype = script ? Math.round(marketing / 10000 + hiredActor.star * 0.8 + (upgradeEffects.marketingFirm ? 20 : 0)) : 0;
+  const quality = script ? Math.round(script.quality * 0.45 + (director.talent + directorPrestige * 5) * 0.25 + hiredActor.talent * 0.3 + (upgradeEffects.vfxLab && ['Sci-Fi', 'Action'].includes(script.genre) ? 8 : 0)) : 0;
+  const hype = script ? Math.round(marketing / 10000 * (directorPrestige > 0 ? 2 : 1) + hiredActor.star * 0.8 + (upgradeEffects.marketingFirm ? 20 : 0) + actorPrestige * 16) : 0;
+  const valuation = Math.round(budget * 5 + catalog.reduce((sum, item) => sum + item.gross, 0) + reputation * 1000000 + (upgradeEffects.backlot ? 10000000 : 0));
+  const exchangeUnlocked = valuation >= 100000000;
+  const streamingUnlocked = catalog.length >= 50 && budget >= 200000000;
+  const exclusiveTitles = exclusiveCatalog ? catalog.length : Math.round(catalog.length * 0.25);
+  const averageCriticalScore = catalog.length ? Math.round(catalog.reduce((sum, item) => sum + item.criticScore, 0) / catalog.length) : 0;
+  const streamingRevenue = subscribers * streamingPrice;
+  const effectiveStreamingChurn = Math.max(1.5, 8 + (streamingPrice - 12) * 0.35 - serverBudget / 500000 - streamingFeatures.length * 0.7 - (exclusiveCatalog ? averageCriticalScore / 100 : 0));
+  const streamingRetention = Math.max(42, 100 - effectiveStreamingChurn);
+  const stockPrices = rivalStudios.reduce((prices, rival) => ({ ...prices, [rival.id]: Number((rival.base + catalog.length * 4 + reputation * 2).toFixed(2)) }), {});
 
   const purchaseScript = (choice) => {
     if (choice.cost > budget) return;
@@ -182,6 +217,62 @@ function App() {
     setUpgradeCelebration(node.id);
     setTimeout(() => setUpgradeCelebration(null), 1400);
   };
+  const buyStock = (rival, shares) => {
+    const price = stockPrices[rival.id] * shares;
+    if (!exchangeUnlocked || price > budget) return;
+    setBudget((current) => current - price);
+    setStockHoldings((current) => ({ ...current, [rival.id]: (current[rival.id] || 0) + shares }));
+    if (((stockHoldings[rival.id] || 0) + shares) / rival.shares >= 0.51) setRivalControl((current) => ({ ...current, [rival.id]: true }));
+  };
+  const startCorporateWar = (rival) => setCorporateWar({ rival, round: 0, playerBid: 0, rivalBid: Math.round(stockPrices[rival.id] * rival.shares * 0.52) });
+  const corporateBid = (amount) => {
+    if (!corporateWar || amount > budget) return;
+    const next = { ...corporateWar, round: corporateWar.round + 1, playerBid: corporateWar.playerBid + amount, rivalBid: corporateWar.rivalBid * (1.08 + Math.random() * 0.12) };
+    if (next.round >= 3) {
+      if (next.playerBid >= next.rivalBid) { setRivalControl((current) => ({ ...current, [next.rival.id]: true })); setBudget((current) => current - amount); setCorporateWar(null); }
+      else { setBudget((current) => current - amount); setReputation((current) => Math.max(0, current - 3)); setCorporateWar(null); }
+    } else { setBudget((current) => current - amount); setCorporateWar(next); }
+  };
+  const defendCorporateWar = (mode) => {
+    if (mode === 'poison') { setPoisonPillUsed(true); setCorporateWar(null); setReputation((current) => Math.max(0, current - 1)); }
+    else { setBudget((current) => current + 2500000); setCorporateWar(null); }
+  };
+  const launchPlatform = (name, price, infrastructure) => { setStreamingName(name); setStreamingPrice(price); setServerBudget(infrastructure); setSubscribers(Math.round(exclusiveTitles * Math.max(10000, averageCriticalScore * 900))); setPhase('streaming'); };
+  const toggleCatalogLicense = (exclusive) => { setExclusiveCatalog(exclusive); if (!exclusive) setBudget((current) => current + catalog.reduce((sum, item) => sum + Math.round(item.gross * 0.08), 0)); };
+
+  const beginAwards = (campaign) => {
+    setBudget((current) => current - campaign);
+    if (campaign > 5000000 && Math.random() < 0.18) {
+      setAwardsScandal(true);
+      setCatalog((current) => current.map((item) => ({ ...item, awardWinner: false })));
+      setReputation(0);
+      setFestivalLocked(true);
+      setAwardCeremony({ scandal: true, categories: [] });
+      setPhase('awards');
+      return;
+    }
+    const eligible = catalog.filter((item) => Math.floor(item.year) === Math.floor(year - 0.5) && item.criticScore > 90);
+    const rival = { title: ['Empire of Dust', 'The Golden Hour', 'Titanfall: Ascension'][Math.floor(Math.random() * 3)], criticScore: 88 + Math.floor(Math.random() * 10), actor: { name: 'Rival Talent' }, director: { name: 'Rival Auteur' } };
+    const scoreFor = (item, bonus) => (item.criticScore || 0) + (item.audienceScore || 0) * 0.18 + Math.sqrt(campaign / 1000000) * bonus;
+    const bestPicture = [...eligible, rival].sort((a, b) => scoreFor(b, 2) - scoreFor(a, 2))[0];
+    const bestDirector = [...eligible, rival].sort((a, b) => (b.director?.talent || b.criticScore) - (a.director?.talent || a.criticScore))[0];
+    const bestActor = [...eligible, rival].sort((a, b) => (b.actor?.star || b.audienceScore) - (a.actor?.star || a.audienceScore))[0];
+    setAwardCeremony({ scandal: false, campaign, categories: [{ name: 'Best Picture', winner: bestPicture, player: Boolean(bestPicture.title && eligible.some((item) => item.title === bestPicture.title)) }, { name: 'Best Director', winner: bestDirector, player: Boolean(bestDirector.title && eligible.some((item) => item.title === bestDirector.title)) }, { name: 'Best Lead Actor', winner: bestActor, player: Boolean(bestActor.title && eligible.some((item) => item.title === bestActor.title)) }] });
+    setPhase('awards');
+  };
+
+  const finishAwards = (ceremony) => {
+    if (ceremony.scandal) { setAwardCeremony(null); setPhase('dashboard'); return; }
+    const wins = ceremony.categories.filter((category) => category.player);
+    setCatalog((current) => current.map((item) => wins.some((win) => win.winner.title === item.title) ? { ...item, awardWinner: true, residual: item.residual * 3, gross: item.gross + 750000 } : item));
+    setReputation((current) => current + wins.length * 3);
+    wins.forEach((win) => {
+      if (win.name === 'Best Lead Actor') setTalentPrestige((current) => ({ ...current, actors: { ...current.actors, [win.winner.actor.name]: (current.actors[win.winner.actor.name] || 0) + 1 } }));
+      if (win.name === 'Best Director') setTalentPrestige((current) => ({ ...current, directors: { ...current.directors, [win.winner.director.name]: (current.directors[win.winner.director.name] || 0) + 1 } }));
+    });
+    setAwardCeremony(null);
+    setPhase('dashboard');
+  };
 
   const startFilming = () => {
     const castingCost = hiredActor.salary + director.salary + marketing + planning.total + planning.overheadTotal;
@@ -195,10 +286,18 @@ function App() {
     setPhase('filming');
   };
 
+  const completeFestival = ({ hypeBoost, backendCut, payout, marketingFree }) => {
+    setBudget((current) => current + payout);
+    setProductionImpact((current) => ({ ...current, hype: current.hype + hypeBoost }));
+    setFestivalBackendCut(backendCut);
+    if (marketingFree) setMarketing(0);
+    setPhase('casting');
+  };
+
   useEffect(() => {
     if (phase !== 'filming') return undefined;
     const timer = setInterval(() => setShootProgress((current) => {
-      if (current >= 100) { clearInterval(timer); setResult(createRelease({ script, actor: hiredActor, director, marketing, quality, hype, trend, planning, loan, impact: productionImpact })); setVisibleWeeks(0); setPhase('receipt'); return 100; }
+      if (current >= 100) { clearInterval(timer); setResult(createRelease({ script, actor: hiredActor, director, marketing, quality, hype, trend, planning, loan, impact: productionImpact, backendCut: festivalBackendCut })); setVisibleWeeks(0); setPhase('receipt'); return 100; }
       if (!crisis && Math.random() < planning.crisisChance * 0.07) { setCrisis(createCrisis({ script, actor, director, planning, budget })); setPhase('crisis'); return current; }
       if (Math.random() < planning.delayChance * 0.18) return current;
       return current + 4;
@@ -242,13 +341,14 @@ function App() {
   };
   const wrapRelease = () => {
     const gross = result.weeks.reduce((sum, week) => sum + week.domestic + week.international, 0);
+    const dividends = rivalStudios.reduce((sum, rival) => sum + (stockHoldings[rival.id] || 0) * stockPrices[rival.id] * rival.dividend, 0);
     const licensingBonus = upgradeEffects.merchandising && ['Action', 'Comedy'].includes(result.genre) ? 400000 : 0;
     const cultBonus = upgradeEffects.cultClassic && result.criticScore < 60 && Math.random() < 0.35 ? 1200000 : 0;
     const finalGross = gross + licensingBonus + cultBonus;
     const net = finalGross - result.totalCost;
     const residual = Math.round(result.audienceScore * 1550 * (upgradeEffects.streaming ? 2 : 1));
     setCatalog((current) => [...current, { ...result, gross: finalGross, net, residual, year, licensingBonus, cultBonus }]);
-    setBudget((current) => current + finalGross - (result.loan?.principal || 0) - (result.loan?.interest || 0));
+    setBudget((current) => current + finalGross + dividends - (result.loan?.principal || 0) - (result.loan?.interest || 0));
     setReputation((current) => current + (result.criticScore > 85 ? 2 : result.criticScore > 70 ? 1 : 0));
     setYear((current) => current + 0.5);
     setScripts(randomScripts());
@@ -256,8 +356,9 @@ function App() {
     setResult(null);
     setDashboardTab('overview');
     setLoan(null);
-    setPhase('dashboard');
-    if (budget + finalGross - (result.loan?.principal || 0) - (result.loan?.interest || 0) < 0) setGameOver(true);
+    const nextYear = year + 0.5;
+    if (nextYear >= lastAwardsYear + 1) { setLastAwardsYear(nextYear); setPhase('awards'); } else setPhase('dashboard');
+    if (budget + finalGross + dividends - (result.loan?.principal || 0) - (result.loan?.interest || 0) < 0) setGameOver(true);
   };
 
   if (gameOver) return <GameOver onRestart={() => { setBudget(10000000); setYear(2024); setReputation(0); setCatalog([]); setUpgrades([]); setGameOver(false); setPhase('dashboard'); }} />;
@@ -273,18 +374,25 @@ function App() {
       <nav>
         <button className={phase === 'dashboard' && dashboardTab === 'overview' ? 'nav-item active' : 'nav-item'} onClick={() => { setDashboardTab('overview'); setPhase('dashboard'); }}><LayoutDashboard size={18} /> Overview</button>
         <button className={phase === 'hq' ? 'nav-item active' : 'nav-item'} onClick={() => setPhase('hq')}><BriefcaseBusiness size={18} /> Studio HQ</button>
+        <button className={phase === 'exchange' ? 'nav-item active' : 'nav-item'} disabled={!exchangeUnlocked} onClick={() => setPhase('exchange')}><TrendingUp size={18} /> Stock Exchange {!exchangeUnlocked && <small className="nav-lock">$100M</small>}</button>
+        <button className={phase === 'streaming' ? 'nav-item active' : 'nav-item'} disabled={!streamingUnlocked} onClick={() => setPhase('streaming')}><Film size={18} /> Streaming Platform {!streamingUnlocked && <small className="nav-lock">50 films / $200M</small>}</button>
         <button className={phase === 'preproduction' || phase === 'logistics' || phase === 'casting' ? 'nav-item active' : 'nav-item'} onClick={() => setPhase('preproduction')}><Clapperboard size={18} /> Production</button>
         <button className={phase === 'results' ? 'nav-item active' : 'nav-item'} onClick={() => result && setPhase('results')}><BarChart3 size={18} /> Box Office</button>
       </nav>
       <div className="sidebar-bottom"><div className="nav-label">Studio</div><button className="nav-item" onClick={() => { setDashboardTab('catalog'); setPhase('dashboard'); }}><BriefcaseBusiness size={18} /> Catalog Profits</button><button className="nav-item"><Settings size={18} /> Settings</button><div className="user-card"><div className="avatar">JD</div><div><strong>Jordan Davis</strong><small>Studio Owner</small></div><Menu size={16} className="user-menu" /></div></div>
     </aside>
     <main className="main-content">
-      <header className="topbar"><div className="mobile-logo"><Film size={18} /></div><div className="breadcrumb"><span>Studio</span><span>/</span><strong>{phase === 'hq' ? 'Studio Headquarters' : phase === 'dashboard' ? (dashboardTab === 'catalog' ? 'Catalog Profits' : 'Overview') : phase === 'preproduction' ? 'Pre-Production' : phase === 'logistics' ? 'Logistics & Assets' : phase === 'casting' ? 'Casting Department' : phase === 'filming' ? 'Principal Photography' : phase === 'receipt' ? 'Production Receipt' : 'Box Office Results'}</strong></div><div className="header-metrics"><Metric icon={<Wallet size={16} />} label="Studio budget" value={<AnimatedNumber value={budget} />} /><Metric icon={<Star size={16} />} label="Reputation" value={reputation.toFixed(1)} suffix=" stars" /><Metric icon={<CalendarDays size={16} />} label="Current year" value={year.toFixed(1)} /></div><button className="icon-button"><Activity size={18} /></button></header>
+      <header className="topbar"><div className="mobile-logo"><Film size={18} /></div><div className="breadcrumb"><span>Studio</span><span>/</span><strong>{phase === 'hq' ? 'Studio Headquarters' : phase === 'awards' ? 'Awards Season' : phase === 'dashboard' ? (dashboardTab === 'catalog' ? 'Catalog Profits' : 'Overview') : phase === 'preproduction' ? 'Pre-Production' : phase === 'logistics' ? 'Logistics & Assets' : phase === 'casting' ? 'Casting Department' : phase === 'filming' ? 'Principal Photography' : phase === 'receipt' ? 'Production Receipt' : 'Box Office Results'}</strong></div><div className="header-metrics"><Metric icon={<Wallet size={16} />} label="Studio budget" value={<AnimatedNumber value={budget} />} /><Metric icon={<Star size={16} />} label="Reputation" value={reputation.toFixed(1)} suffix=" stars" /><Metric icon={<CalendarDays size={16} />} label="Current year" value={year.toFixed(1)} /></div><button className="icon-button"><Activity size={18} /></button></header>
       {phase === 'dashboard' && <Dashboard onNewProject={newProject} catalog={catalog} dashboardTab={dashboardTab} setDashboardTab={setDashboardTab} year={year} />}
+      {phase === 'awards' && <AwardsSeason catalog={catalog} year={year} budget={budget} ceremony={awardCeremony} scandal={awardsScandal} onBegin={beginAwards} onFinish={finishAwards} />}
       {phase === 'hq' && <Headquarters budget={budget} reputation={reputation} upgrades={upgrades} onBuy={buyUpgrade} celebration={upgradeCelebration} onBack={() => setPhase('dashboard')} />}
+      {phase === 'exchange' && <StockExchange valuation={valuation} budget={budget} prices={stockPrices} holdings={stockHoldings} control={rivalControl} poisonPillUsed={poisonPillUsed} onBuy={buyStock} onTakeover={startCorporateWar} onBack={() => setPhase('dashboard')} />}
+      {phase === 'streaming' && <StreamingPlatform name={streamingName} price={streamingPrice} serverBudget={serverBudget} setName={setStreamingName} setPrice={setStreamingPrice} setServerBudget={setServerBudget} features={streamingFeatures} setFeatures={setStreamingFeatures} exclusive={exclusiveCatalog} toggleExclusive={toggleCatalogLicense} catalog={catalog} subscribers={subscribers} setSubscribers={setSubscribers} revenue={streamingRevenue} churn={effectiveStreamingChurn} retention={streamingRetention} quarter={streamingQuarter} setQuarter={setStreamingQuarter} onLaunch={launchPlatform} onBack={() => setPhase('dashboard')} />}
+      {corporateWar && <CorporateWar war={corporateWar} budget={budget} onBid={corporateBid} onDefend={defendCorporateWar} />}
       {phase === 'preproduction' && <PreProduction scripts={scripts} budget={budget} trend={trend} onPurchase={purchaseScript} onBack={() => setPhase('dashboard')} />}
       {phase === 'logistics' && <><LogisticsPlanner script={script} budget={budget} location={location} setLocation={setLocation} catering={catering} setCatering={setCatering} equipment={equipment} setEquipment={setEquipment} costumeQuality={costumeQuality} setCostumeQuality={setCostumeQuality} propsBudget={propsBudget} setPropsBudget={setPropsBudget} vfxBudget={vfxBudget} setVfxBudget={setVfxBudget} planning={planning} onContinue={() => setPhase('casting')} onBack={() => setPhase('preproduction')} /><SecurityDock securityBudget={securityBudget} setSecurityBudget={setSecurityBudget} /></>}
       {phase === 'casting' && <Casting script={script} actor={actor} setActor={setActor} director={director} setDirector={setDirector} marketing={marketing} setMarketing={setMarketing} budget={budget} projected={projected} allowLoan={projected > budget} onStart={startFilming} onBack={() => setPhase('logistics')} />}
+      {phase === 'festival' && <FestivalScreen script={script} quality={quality} director={director} budget={budget} locked={festivalLocked} onCharge={(fee) => setBudget((current) => current - fee)} onComplete={completeFestival} onBack={() => setPhase('casting')} />}
       {phase === 'filming' && <Filming progress={shootProgress} />}
       {phase === 'crisis' && <CrisisModal crisis={crisis} actor={actor} onResolve={resolveCrisis} />}
       {phase === 'receipt' && <ReceiptModal result={result} budget={budget} onContinue={() => setPhase('results')} />}
@@ -295,6 +403,12 @@ function App() {
 
 function Metric({ icon, label, value, suffix = '' }) { return <div className="metric"><span className="metric-icon">{icon}</span><span><small>{label}</small><strong>{value}{suffix}</strong></span></div>; }
 function PageTitle({ eyebrow, title, detail, children }) { return <div className="page-title"><div><div className="eyebrow">{eyebrow}</div><h1>{title}</h1><p>{detail}</p></div>{children}</div>; }
+function AwardsSeason({ catalog, year, budget, ceremony, scandal, onBegin, onFinish }) { const [campaign, setCampaign] = useState(1000000); const [revealed, setRevealed] = useState(0); const nominees = catalog.filter((item) => Math.floor(item.year) === Math.floor(year - 0.5) && item.criticScore > 90); if (!ceremony) return <div className="awards-screen fade-in"><div className="awards-curtain"></div><div className="awards-card campaign-card"><div className="trophy-mark">✦</div><div className="eyebrow">The 2025 Silver Screen honors</div><h1>For Your<br /><em>Consideration.</em></h1><p>Industry voters are watching your {nominees.length} eligible release{nominees.length === 1 ? '' : 's'}. Spend with restraint: lobbying has diminishing returns, and extravagant campaigns can trigger an Industry Scandal.</p><div className="campaign-meter"><div><span>Campaign budget</span><strong>{money(campaign)}</strong></div><input type="range" min="0" max="8000000" step="250000" value={campaign} onChange={(event) => setCampaign(Number(event.target.value))} /><div className="range-labels"><span>Organic</span><span>Lavish industry parties</span></div></div><button className="primary-button" disabled={campaign > budget} onClick={() => onBegin(campaign)}><Ticket size={18} /> Begin ceremony <ArrowRight size={17} /></button><small className="campaign-note">Available bank: {money(budget)} · {nominees.length} films qualify with critics above 90%</small></div></div>;
+  if (scandal || ceremony.scandal) return <div className="awards-screen fade-in"><div className="awards-card scandal-card"><div className="trophy-mark">!</div><div className="eyebrow">Industry scandal</div><h1>The ballots<br /><em>are burning.</em></h1><p>Your lobbying campaign was exposed. Every trophy has been stripped, your reputation is zero, and festival doors are closed for the next season.</p><button className="primary-button" onClick={() => onFinish(ceremony)}><ArrowRight size={17} /> Leave the ceremony</button></div></div>;
+  const finished = revealed >= ceremony.categories.length; return <div className="awards-screen fade-in"><div className="awards-card ceremony-card"><div className="trophy-mark">✦</div><div className="eyebrow">Live from the Orpheum Theatre · {year.toFixed(1)}</div><h1>The Silver Screen<br /><em>Honors</em></h1><p className="ceremony-subtitle">Three categories. One unforgettable night.</p><div className="award-list">{ceremony.categories.map((category, index) => <div className={`award-category ${index < revealed ? 'revealed' : ''}`} key={category.name}><span>{category.name}</span>{index < revealed ? <strong>{category.player ? `★ ${category.winner.title}` : `Rival victory · ${category.winner.title}`}</strong> : <em>And the nominees are...</em>}</div>)}</div>{!finished ? <button className="primary-button" onClick={() => setRevealed((current) => current + 1)}><Sparkles size={17} /> Reveal next winner</button> : <button className="primary-button" onClick={() => onFinish(ceremony)}><Star size={17} /> Accept the results</button>}</div></div>; }
+function StreamingPlatform({ name, price, serverBudget, setName, setPrice, setServerBudget, features, setFeatures, exclusive, toggleExclusive, catalog, subscribers, setSubscribers, revenue, churn, retention, quarter, setQuarter, onLaunch, onBack }) { const [draftName, setDraftName] = useState(name); const techGiants = [{ name: 'Nexus Prime', price: 13, threat: 'Free-trial price war' }, { name: 'Orbit Cloud', price: 9, threat: 'Talent poaching' }, { name: 'Vista Global', price: 15, threat: 'Bandwidth outbid' }]; const featureData = [{ id: '4k', name: '4K HDR streaming', cost: 550000, benefit: '+4% retention' }, { id: 'offline', name: 'Offline downloads', cost: 800000, benefit: '+7% retention' }, { id: 'recommendations', name: 'Personalized recommendations', cost: 1200000, benefit: '+11% retention' }, { id: 'bundle', name: 'Global Distribution Bundle', cost: 1800000, benefit: '+25% global reach' }]; return <div className="view fade-in streaming-view"><PageTitle eyebrow="Digital empire / 50 films + $200M capital" title={name} detail="Turn your back catalog into a recurring global media business."><button className="text-button" onClick={onBack}><ArrowRight size={16} className="flip" /> Return to overview</button></PageTitle><div className="streaming-settings"><div><label>Platform identity</label><input value={draftName} onChange={(event) => setDraftName(event.target.value)} onBlur={() => setName(draftName)} /><small>Name your network and set its public promise.</small></div><div><label>Monthly subscription</label><input type="range" min="5" max="30" value={price} onChange={(event) => setPrice(Number(event.target.value))} /><strong>${price}/month</strong></div><div><label>Server infrastructure</label><input type="range" min="100000" max="2500000" step="50000" value={serverBudget} onChange={(event) => setServerBudget(Number(event.target.value))} /><strong>{money(serverBudget)}/month upkeep</strong></div></div><div className="streaming-metrics"><div><small>Active subscribers</small><strong>{subscribers.toLocaleString()}</strong><span>Global accounts</span></div><div><small>Monthly recurring revenue</small><strong>{money(revenue)}</strong><span>Before infrastructure</span></div><div><small>Infrastructure upkeep</small><strong className="negative">-{money(serverBudget)}</strong><span>Bandwidth and delivery</span></div><div><small>Subscriber retention</small><strong className="positive">{retention.toFixed(1)}%</strong><span>{churn.toFixed(1)}% monthly churn</span></div></div><div className="streaming-columns"><section className="stream-panel"><div className="stream-panel-head"><div><div className="eyebrow">Catalog strategy</div><h2>Who gets to watch?</h2></div><span>{catalog.length} titles</span></div><div className="license-toggle"><button className={exclusive ? 'selected' : ''} onClick={() => toggleExclusive(true)}>Make catalog exclusive<br /><small>Max subscriber growth</small></button><button className={!exclusive ? 'selected' : ''} onClick={() => toggleExclusive(false)}>License third parties<br /><small>Instant cash, less retention</small></button></div><div className="stream-original"><div><div className="eyebrow">Streaming Originals</div><h3>Quarter {quarter + 1} retention project</h3><p>Low-budget, fast-turnaround content keeps subscribers engaged between theatrical releases.</p></div><button className="primary-button" onClick={() => { setSubscribers((current) => current + 35000); setQuarter((current) => current + 1); }}>Produce original</button></div></section><section className="stream-panel"><div className="stream-panel-head"><div><div className="eyebrow">Platform upgrades</div><h2>Keep the giants behind you</h2></div></div><div className="feature-list">{featureData.map((feature) => <button className={features.includes(feature.id) ? 'feature-row active' : 'feature-row'} key={feature.id} onClick={() => !features.includes(feature.id) && setFeatures((current) => [...current, feature.id])}><span>{features.includes(feature.id) ? '✓' : '＋'}</span><div><strong>{feature.name}</strong><small>{feature.benefit} · {money(feature.cost)} one-time</small></div></button>)}</div></section></div><section className="tech-war"><div><div className="eyebrow">Tech war watch</div><h2>Digital competitors</h2><p>Price cuts and free trials are pressuring the market. Adjust your platform before retention slips.</p></div>{techGiants.map((giant) => <div className="tech-giant" key={giant.name}><strong>{giant.name}</strong><span>${giant.price}/mo · {giant.threat}</span></div>)}</section></div>; }
+function StockExchange({ valuation, budget, prices, holdings, control, poisonPillUsed, onBuy, onTakeover, onBack }) { return <div className="view fade-in"><PageTitle eyebrow="Public markets / $100M unlock" title="Hollywood Stock Exchange" detail="Trade the momentum of the industry. Rival hits can fund your next production."><button className="text-button" onClick={onBack}><ArrowRight size={16} className="flip" /> Return to HQ</button></PageTitle><div className="market-banner"><div><small>Your studio valuation</small><strong>{money(valuation)}</strong><span>Shareholder confidence <i></i></span></div><div><small>Liquid reserves</small><strong>{money(budget)}</strong><span>{poisonPillUsed ? 'Poison pill deployed · share price impaired' : 'Market access: unrestricted'}</span></div></div><div className="stock-grid">{rivalStudios.map((rival) => <article className={`stock-card ${control[rival.id] ? 'controlled' : ''}`} key={rival.id}><div className="stock-head"><span className="rival-logo" style={{ background: rival.color }}>{rival.name.slice(0, 1)}</span><div><h3>{rival.name}</h3><small>{control[rival.id] ? `Controlled territory · ${rival.territory}` : 'Independent rival studio'}</small></div><strong>${prices[rival.id]}</strong></div><div className="stock-chart"><i style={{ height: `${35 + prices[rival.id] % 50}%` }}></i><i style={{ height: `${45 + prices[rival.id] % 35}%` }}></i><i style={{ height: `${30 + prices[rival.id] % 60}%` }}></i><i style={{ height: `${55 + prices[rival.id] % 30}%` }}></i><i style={{ height: `${40 + prices[rival.id] % 50}%` }}></i></div><div className="stock-meta"><span>Holding <strong>{((holdings[rival.id] || 0) / rival.shares * 100).toFixed(1)}%</strong></span><span>Dividend <strong>{(rival.dividend * 100).toFixed(1)}%</strong></span></div><div className="stock-actions"><button onClick={() => onBuy(rival, 10000)}>Buy 1% · {money(prices[rival.id] * 10000)}</button><button onClick={() => onBuy(rival, 100000)}>Buy 10% · {money(prices[rival.id] * 100000)}</button></div>{control[rival.id] ? <div className="control-vault">▣ Controlled · Script vault: <strong>{rival.vault}</strong><small>Quarterly dividend active</small></div> : <button className="takeover-link" onClick={() => onTakeover(rival)}>Attempt hostile takeover</button>}</article>)}</div></div>; }
+function CorporateWar({ war, budget, onBid, onDefend }) { return <div className="corporate-war"><div className="war-card"><div className="eyebrow">Corporate war / hostile takeover</div><h1>{war.rival.name} is<br /><em>coming for you.</em></h1><p>The rival CEO is bidding against your studio. Choose how to defend your control or turn the tables.</p><div className="war-meter"><span>Your bid {money(war.playerBid)}</span><span>Rival defense {money(war.rivalBid)}</span><div><i style={{ width: `${Math.min(100, war.playerBid / Math.max(war.rivalBid, 1) * 100)}%` }}></i></div></div><div className="war-actions"><button onClick={() => onBid(500000)}>Bid $500k</button><button onClick={() => onBid(2000000)}>Bid $2M</button><button onClick={() => onDefend('poison')}>Poison pill<br /><small>Dilute attack · stock crash</small></button><button onClick={() => onDefend('whiteKnight')}>White Knight<br /><small>Merge · $2.5M bridge</small></button></div><small className="war-round">Bidding round {war.round + 1} of 3 · Failure costs sunk bids and reputation</small></div></div>; }
 function Headquarters({ budget, reputation, upgrades, onBuy, celebration, onBack }) { const ownedBacklot = upgrades.includes('backlot'); const branches = [...new Set(upgradeNodes.map((node) => node.branch))]; return <div className="view fade-in"><PageTitle eyebrow="Permanent studio development" title="Studio Headquarters" detail="Invest in the infrastructure that compounds every future production."><button className="text-button" onClick={onBack}><ArrowRight size={16} className="flip" /> Return to overview</button></PageTitle><div className="hq-banner"><div><div className="eyebrow">The studio footprint</div><h2>{ownedBacklot ? 'Your empire is taking shape.' : 'Build something that outlasts a release.'}</h2><p>Unlock permanent advantages with profits from the box office. Every executive and facility carries an ongoing retainer.</p></div><div className="hq-stats"><span><small>Available capital</small><strong>{money(budget)}</strong></span><span><small>Reputation gate</small><strong>{reputation.toFixed(1)} <em>stars</em></strong></span></div></div><div className="hq-footprint">{ownedBacklot && <><div className="building owned"><span>▦</span><strong>SS SOUNDSTAGE</strong><small>Owned backlot · $35k/day upkeep</small></div>{upgrades.includes('greenScreen') && <div className="building"><span>◈</span><strong>GREEN SCREEN LAB</strong><small>Visual presentation +8</small></div>}{upgrades.includes('practical') && <div className="building"><span>✦</span><strong>PRACTICAL FX</strong><small>Visual presentation +5</small></div>}</>}</div><div className="hq-tree">{branches.map((branch) => <section className="upgrade-branch" key={branch}><div className="branch-heading"><span>{branch === 'Backlot Expansion' ? '01' : branch === 'Department Heads' ? '02' : '03'}</span><div><h2>{branch}</h2><p>{branch === 'Backlot Expansion' ? 'Own the stages. Control the spectacle.' : branch === 'Department Heads' ? 'Elite operators for every wing.' : 'Make yesterday’s films earn tomorrow.'}</p></div></div><div className="upgrade-grid">{upgradeNodes.filter((node) => node.branch === branch).map((node) => <UpgradeNode key={node.id} node={node} owned={upgrades.includes(node.id)} budget={budget} reputation={reputation} upgrades={upgrades} onBuy={onBuy} />)}</div></section>)}</div>{celebration && <div className="upgrade-celebration"><div className="celebration-particles">✦　✧　✦　✧　✦</div><strong>Upgrade acquired</strong><span>Permanent advantage installed</span></div>}</div>; }
 function UpgradeNode({ node, owned, budget, reputation, upgrades, onBuy }) { const missingPrereq = node.prereq.find((id) => !upgrades.includes(id)); const locked = !owned && (budget < node.cost || reputation < node.reputation || missingPrereq); const lockReason = missingPrereq ? `Requires ${upgradeNodes.find((item) => item.id === missingPrereq)?.name}` : reputation < node.reputation ? `Requires ${node.reputation} reputation stars` : budget < node.cost ? 'Insufficient capital' : 'Ready to acquire'; return <article className={`upgrade-node ${owned ? 'owned' : ''} ${locked ? 'locked' : ''}`} title={`${node.name}: ${node.benefit}`}><div className="node-top"><span className="node-icon">{node.icon}</span><span className="node-status">{owned ? 'INSTALLED' : node.branch === 'Backlot Expansion' ? 'FACILITY' : 'PERK'}</span></div><h3>{node.name}</h3><p>{node.benefit}</p><div className="node-meta"><span>{money(node.cost)}</span><span>{node.reputation}★ gate</span></div><button disabled={locked || owned} onClick={() => onBuy(node)}>{owned ? 'Owned permanently' : lockReason}</button></article>; }
 function Dashboard({ onNewProject, catalog, dashboardTab, setDashboardTab, year }) { const totalResidual = catalog.reduce((sum, item) => sum + item.residual, 0); return <div className="view fade-in"><div className="dashboard-tabs"><button className={dashboardTab === 'overview' ? 'tab active' : 'tab'} onClick={() => setDashboardTab('overview')}><LayoutDashboard size={15} /> Overview</button><button className={dashboardTab === 'catalog' ? 'tab active' : 'tab'} onClick={() => setDashboardTab('catalog')}><TrendingUp size={15} /> Catalog Profits <span>{catalog.length}</span></button></div>{dashboardTab === 'overview' ? <><PageTitle eyebrow={`Season ${year.toFixed(1)} / Tuesday, October 15`} title="Good morning, Jordan" detail="Your studio is ready for its next big story." /><section className="hero-panel"><div className="hero-copy"><span className="section-tag"><Sparkles size={14} /> Studio command center</span><h2>Make something<br /><em>worth watching.</em></h2><p>Every great studio starts with one courageous greenlight. Find your next story and turn it into a cultural moment.</p><button className="primary-button pulse" onClick={onNewProject}><Film size={18} /> New Project <ArrowRight size={17} /></button></div><div className="hero-visual"><div className="orbital orbital-one"></div><div className="orbital orbital-two"></div><div className="hero-reel"><Clapperboard size={44} /><span>SS</span></div><div className="visual-caption"><span className="live-dot"></span> Studio status <strong>Ready to produce</strong></div></div></section><div className="section-heading"><div><h3>Studio pulse</h3><p>Your key performance indicators at a glance.</p></div><span className="period"><CalendarDays size={14} /> {catalog.length} releases</span></div><div className="stat-grid"><StatCard icon={<Ticket />} label="Audience sentiment" value={catalog.length ? `${Math.round(catalog.reduce((sum, item) => sum + item.audienceScore, 0) / catalog.length)}%` : '—'} note={catalog.length ? 'Across your catalog' : 'No releases yet'} /><StatCard icon={<Gauge />} label="Catalog value" value={money(totalResidual)} note="Weekly residual estimate" /><StatCard icon={<Users />} label="Active projects" value="0" note="Your slate is clear" /></div></> : <CatalogProfits catalog={catalog} />}</div>; }
